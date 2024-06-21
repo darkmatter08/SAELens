@@ -4,11 +4,13 @@ https://github.com/ArthurConmy/sae/blob/main/sae/model.py
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, Tuple
 
 import einops
 import torch
+import torch.nn as nn
 from jaxtyping import Float
 from safetensors.torch import save_file
 from torch import nn
@@ -24,6 +26,43 @@ from sae_lens.toolkit.pretrained_saes_directory import get_pretrained_saes_direc
 SPARSITY_PATH = "sparsity.safetensors"
 SAE_WEIGHTS_PATH = "sae_weights.safetensors"
 SAE_CFG_PATH = "cfg.json"
+
+
+class TopK(nn.Module):
+    def __init__(self, k: int, postact_fn: Callable = nn.ReLU()) -> None:
+        super().__init__()
+        self.k = k
+        self.postact_fn = postact_fn
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        topk = torch.topk(x, k=self.k, dim=-1)
+        values = self.postact_fn(topk.values)
+        # make all other values 0
+        result = torch.zeros_like(x)
+        result.scatter_(-1, topk.indices, values)
+        return result
+
+    def state_dict(self, destination=None, prefix="", keep_vars=False):
+        state_dict = super().state_dict(destination, prefix, keep_vars)
+        # state_dict.update({prefix + "k": nn.Parameter(torch.tensor(self.k, dtype=torch.int32)), prefix + "postact_fn": self.postact_fn.__class__.__name__})
+        # state_dict.update({prefix + "k": self.k, prefix + "postact_fn": self.postact_fn.__class__.__name__})
+        # state_dict.update({prefix + "k": torch.tensor(self.k, requires_grad=False), prefix + "postact_fn": self.postact_fn.__class__.__name__})
+        state_dict.update({prefix + "k": torch.tensor(self.k, requires_grad=False)})
+        return state_dict
+
+    @classmethod
+    def from_state_dict(cls, state_dict: dict[str, torch.Tensor], strict: bool = True) -> "TopK":
+        # k = int(state_dict["k"].data.item())
+        k = state_dict["k"]
+        # postact_fn = ACTIVATIONS_CLASSES[state_dict["postact_fn"]]()
+        return cls(k=k)#, postact_fn=postact_fn)
+
+ACTIVATIONS_CLASSES = {
+    "ReLU": nn.ReLU,
+    "Identity": nn.Identity,
+    "TopK": TopK,
+}
+
 
 
 @dataclass
@@ -431,7 +470,6 @@ class SAE(HookedRootModule):
         self.d_head = None
         self.hook_z_reshaping_mode = False
 
-
 def get_activation_fn(activation_fn: str) -> Callable[[torch.Tensor], torch.Tensor]:
     if activation_fn == "relu":
         return torch.nn.ReLU()
@@ -443,5 +481,8 @@ def get_activation_fn(activation_fn: str) -> Callable[[torch.Tensor], torch.Tens
             return input
 
         return tanh_relu
+    elif (match := re.match(r"topk-(\d+)", activation_fn)):
+        k = int(match.group(1))
+        return TopK(k=k)
     else:
         raise ValueError(f"Unknown activation function: {activation_fn}")
