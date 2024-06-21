@@ -20,8 +20,6 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 
-########
-
 ######## 
 # MLP Out
 
@@ -38,13 +36,25 @@ l1_warm_up_steps = total_training_steps // 20  # 5% of training
 LEO_ACTIVATION_FN = "topk-32"
 
 EXPERIMENTS = {
-    "default": ("tiny-stories-1L-21M", 1024, LEO_ACTIVATION_FN),
-    "baseline": ("gpt2-small", 768, LEO_ACTIVATION_FN),
-    "experiment": ("gpt2-xl", 1600, LEO_ACTIVATION_FN),
+    "tiny": ("tiny-stories-1L-21M", 1024, LEO_ACTIVATION_FN),
+    "gpt2-small": ("gpt2-small", 768, LEO_ACTIVATION_FN),
+    "gpt2-xl": ("gpt2-xl", 1600, LEO_ACTIVATION_FN),
 }
-model_to_use, d_in, activation_fn = EXPERIMENTS["experiment"]
+EXPERIMENTS_HYPERS = {
+    "tiny": {"lr": 5e-5, "l1_coefficient": 5, "train_batch_size_tokens": 4096},
+    "gpt2-small": {"lr": 1.20e-03, "l1_coefficient": 3, "train_batch_size_tokens": 4096},  # taken from `pretrained_saes.yaml`
+    "gpt2-xl": {"lr": 1.20e-03, "l1_coefficient": 3, "train_batch_size_tokens": 32},  # taken from `pretrained_saes.yaml`
+}
+EXPERIMENT = "gpt2-small"
+model_to_use, d_in, activation_fn = EXPERIMENTS[EXPERIMENT]
 
-# TODO: report experiment
+lr = EXPERIMENTS_HYPERS[EXPERIMENT]["lr"]
+l1_coefficient = EXPERIMENTS_HYPERS[EXPERIMENT]["l1_coefficient"]
+train_batch_size_tokens = EXPERIMENTS_HYPERS[EXPERIMENT]["train_batch_size_tokens"]
+total_training_tokens = total_training_steps * train_batch_size_tokens
+
+CONTEXT_SIZE = 256
+CONTEXT_SIZE = 512
 
 cfg = LanguageModelSAERunnerConfig(
     # Data Generating Function (Model + Training Distibuion)
@@ -53,7 +63,8 @@ cfg = LanguageModelSAERunnerConfig(
     hook_name="blocks.0.hook_mlp_out",  # A valid hook point (see more details here: https://neelnanda-io.github.io/TransformerLens/generated/demos/Main_Demo.html#Hook-Points)
     hook_layer=0,  # Only one layer in the model.
     d_in=d_in,  # the width of the mlp output.
-    dataset_path="apollo-research/roneneldan-TinyStories-tokenizer-gpt2",  # this is a tokenized language dataset on Huggingface for the Tiny Stories corpus.
+    # dataset_path="apollo-research/roneneldan-TinyStories-tokenizer-gpt2",  # this is a tokenized language dataset on Huggingface for the Tiny Stories corpus.
+    dataset_path="apollo-research/Skylion007-openwebtext-tokenizer-gpt2",
     is_dataset_tokenized=True,
     streaming=True,  # we could pre-download the token dataset if it was small.
     # SAE Parameters
@@ -67,17 +78,17 @@ cfg = LanguageModelSAERunnerConfig(
     init_encoder_as_decoder_transpose=True,
     normalize_activations="expected_average_only_in",
     # Training Parameters
-    lr=5e-5,  # lower the better, we'll go fairly high to speed up the tutorial.
+    lr=lr,  # lower the better, we'll go fairly high to speed up the tutorial.
     adam_beta1=0.9,  # adam params (default, but once upon a time we experimented with these.)
     adam_beta2=0.999,
     lr_scheduler_name="constant",  # constant learning rate with warmup. Could be better schedules out there.
     lr_warm_up_steps=lr_warm_up_steps,  # this can help avoid too many dead features initially.
     lr_decay_steps=lr_decay_steps,  # this will help us avoid overfitting.
-    l1_coefficient=5,  # will control how sparse the feature activations are
+    l1_coefficient=l1_coefficient,  # will control how sparse the feature activations are
     l1_warm_up_steps=l1_warm_up_steps,  # this can help avoid too many dead features initially.
     lp_norm=1.0,  # the L1 penalty (and not a Lp for p < 1)
-    train_batch_size_tokens=batch_size,
-    context_size=256,  # will control the lenght of the prompts we feed to the model. Larger is better but slower. so for the tutorial we'll use a short one.
+    train_batch_size_tokens=train_batch_size_tokens,
+    context_size=CONTEXT_SIZE,  # will control the lenght of the prompts we feed to the model. Larger is better but slower. so for the tutorial we'll use a short one.
     # Activation Store Parameters
     n_batches_in_buffer=64,  # controls how many activations we store / shuffle.
     training_tokens=total_training_tokens,  # 100 million tokens is quite a few, but we want to see good stats. Get a coffee, come back.
