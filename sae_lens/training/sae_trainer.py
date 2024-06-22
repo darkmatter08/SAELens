@@ -270,6 +270,7 @@ class SAETrainer:
         mse_loss = output.mse_loss
         l1_loss = output.l1_loss
         ghost_grad_loss = output.ghost_grad_loss
+        aux_k_loss = output.aux_k_loss
         loss = output.loss.item()
 
         # metrics for currents acts
@@ -282,12 +283,15 @@ class SAETrainer:
 
         if isinstance(ghost_grad_loss, torch.Tensor):
             ghost_grad_loss = ghost_grad_loss.item()
+        if isinstance(aux_k_loss, torch.Tensor):
+            aux_k_loss = aux_k_loss.item()
         return {
             # losses
             "losses/mse_loss": mse_loss,
             "losses/l1_loss": l1_loss
             / self.current_l1_coefficient,  # normalize by l1 coefficient
             "losses/ghost_grad_loss": ghost_grad_loss,
+            "losses/aux_k_loss": aux_k_loss,
             "losses/overall_loss": loss,
             # variance explained
             "metrics/explained_variance": explained_variance.mean().item(),

@@ -27,6 +27,7 @@ class TrainStepOutput:
     mse_loss: float
     l1_loss: float
     ghost_grad_loss: float
+    aux_k_loss: float
 
 
 @dataclass
@@ -258,7 +259,12 @@ class TrainingSAE(SAE):
             loss=loss,
             mse_loss=mse_loss.item(),
             l1_loss=l1_loss.item(),
-            ghost_grad_loss=aux_loss,
+            ghost_grad_loss=(
+                ghost_grad_loss.item()
+                if isinstance(ghost_grad_loss, torch.Tensor)
+                else ghost_grad_loss
+            ),
+            aux_k_loss = aux_loss,
         )
 
     def calculate_ghost_grad_loss(
