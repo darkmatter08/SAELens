@@ -39,23 +39,18 @@ class TopK(nn.Module):
         self.last_active = None  # This will be initialized with the shape of x in the first forward call
 
     def forward(self, x: torch.Tensor, use_dead: bool = False) -> torch.Tensor:
-        self.step_counter = 0
-        self.last_active = None  # This will be initialized with the shape of x in the first forward call
+        if self.last_active is None:
+            self.last_active = torch.full_like(x, -float('inf'))
         topk = torch.topk(x, k=self.k, dim=-1)
         self.last_active.scatter_(-1, topk.indices, self.step_counter)
-        if not use_dead:
-            values = self.postact_fn(topk.values)
-            result = torch.zeros_like(x)
-            result.scatter_(-1, topk.indices, values)
-            return result
-        else:
+        if use_dead:
             dead_latents_mask = (self.step_counter - self.last_active) > self.threshold
             dead_latents = x * dead_latents_mask
-            auxk = torch.topk(x, k=self.aux_k, dim=-1)
-            values = self.postact_fn(aux_k.values)
-            result = torch.zeros_like(x)
-            result.scatter_(-1, topk.indices, values)
-            return result
+            topk = torch.topk(dead_latents, k=self.aux_k, dim=-1)
+        values = self.postact_fn(topk.values)
+        result = torch.zeros_like(x)
+        result.scatter_(-1, topk.indices, values)
+        return result
 
     def state_dict(self, destination=None, prefix="", keep_vars=False):
         state_dict = super().state_dict(destination, prefix, keep_vars)

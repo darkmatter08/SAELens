@@ -93,7 +93,7 @@ def configure_and_run(experiment: str = "gpt2-small", device: str = "cpu"):
         dead_feature_threshold=1e-4,  # would effect resampling or ghost grads if we were using it.
 
         ## WANDB
-        log_to_wandb=True,  # always use wandb unless you are just testing code.
+        log_to_wandb=False,  # always use wandb unless you are just testing code.
         wandb_project="sae_lens_tutorial",
         wandb_log_frequency=30,
         eval_every_n_wandb_logs=20,
