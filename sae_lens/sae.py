@@ -29,33 +29,33 @@ SAE_CFG_PATH = "cfg.json"
 
 
 class TopK(nn.Module):
-    def __init__(self, k: int, postact_fn: Callable = nn.ReLU()) -> None:
+    def __init__(self, k: int, aux_k = 512, threshold = 10000000, postact_fn: Callable = nn.ReLU()) -> None:
         super().__init__()
         self.k = k
+        self.aux_k = aux_k
+        self.threshold = threshold
         self.postact_fn = postact_fn
+        self.step_counter = 0
+        self.last_active = None  # This will be initialized with the shape of x in the first forward call
 
     def forward(self, x: torch.Tensor, use_dead: bool = False) -> torch.Tensor:
+        self.step_counter = 0
+        self.last_active = None  # This will be initialized with the shape of x in the first forward call
+        topk = torch.topk(x, k=self.k, dim=-1)
+        self.last_active.scatter_(-1, topk.indices, self.step_counter)
         if not use_dead:
-            topk = torch.topk(x, k=self.k, dim=-1)
+            values = self.postact_fn(topk.values)
+            result = torch.zeros_like(x)
+            result.scatter_(-1, topk.indices, values)
+            return result
         else:
-            # topk over dead latents only.
-            # How am I supposed to know which ones are dead latents?
-            # topk = torch.topk(x, k=self.k, dim=-1)
-            # keep around an extra tensor.
-            # of size x.shape
-            # and keep updating it.
-            # then scatter current step number acorss the indicies
-
-            # if current_step - vector > 10_000_000:
-            #     keep that
-            # then topk across elements we've kept.
-
-            pass
-        values = self.postact_fn(topk.values)
-        # make all other values 0
-        result = torch.zeros_like(x)
-        result.scatter_(-1, topk.indices, values)
-        return result
+            dead_latents_mask = (self.step_counter - self.last_active) > self.threshold
+            dead_latents = x * dead_latents_mask
+            auxk = torch.topk(x, k=self.aux_k, dim=-1)
+            values = self.postact_fn(aux_k.values)
+            result = torch.zeros_like(x)
+            result.scatter_(-1, topk.indices, values)
+            return result
 
     def state_dict(self, destination=None, prefix="", keep_vars=False):
         state_dict = super().state_dict(destination, prefix, keep_vars)
