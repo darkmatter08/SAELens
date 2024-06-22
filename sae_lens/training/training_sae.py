@@ -210,7 +210,7 @@ class TrainingSAE(SAE):
 
         # do a forward pass to get SAE out, but we also need the
         # hidden pre.
-        feature_acts, _ = self.encode_with_hidden_pre(sae_in)
+        feature_acts, hidden_pre_noised = self.encode_with_hidden_pre(sae_in)
         sae_out = self.decode(feature_acts)
 
         # MSE LOSS
@@ -232,6 +232,13 @@ class TrainingSAE(SAE):
         else:
             ghost_grad_loss = 0.0
 
+        if True: # aux_k loss
+            alpha = 1.0/32.0
+            ehat = self.decode(self.activation_fn(hidden_pre_noised, use_dead=True))
+            e = sae_in - sae_out
+            err = e - ehat
+            aux_loss = alpha * torch.einsum("b i, b i ->", err, err) / err.size(0)
+
         # SPARSITY LOSS
         # either the W_dec norms are 1 and this won't do anything or they are not 1
         # and we're using their norm in the loss function.
@@ -242,7 +249,7 @@ class TrainingSAE(SAE):
 
         l1_loss = (current_l1_coefficient * sparsity).mean()
 
-        loss = mse_loss + l1_loss + ghost_grad_loss  # instead of ghost_grad_loss, we put in aux_loss
+        loss = mse_loss + l1_loss + ghost_grad_loss + aux_loss
 
         return TrainStepOutput(
             sae_in=sae_in,
@@ -251,11 +258,7 @@ class TrainingSAE(SAE):
             loss=loss,
             mse_loss=mse_loss.item(),
             l1_loss=l1_loss.item(),
-            ghost_grad_loss=(
-                ghost_grad_loss.item()
-                if isinstance(ghost_grad_loss, torch.Tensor)
-                else ghost_grad_loss
-            ),
+            ghost_grad_loss=aux_loss,
         )
 
     def calculate_ghost_grad_loss(
