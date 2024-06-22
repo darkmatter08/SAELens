@@ -242,7 +242,7 @@ class TrainingSAE(SAE):
 
         l1_loss = (current_l1_coefficient * sparsity).mean()
 
-        loss = mse_loss + l1_loss + ghost_grad_loss
+        loss = mse_loss + l1_loss + ghost_grad_loss  # instead of ghost_grad_loss, we put in aux_loss
 
         return TrainStepOutput(
             sae_in=sae_in,
