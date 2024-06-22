@@ -164,7 +164,7 @@ class TrainingSAE(SAE):
         return feature_acts
 
     def encode_with_hidden_pre(
-        self, x: Float[torch.Tensor, "... d_in"]
+        self, x: Float[torch.Tensor, "... d_in"], use_dead: bool = False,
     ) -> tuple[Float[torch.Tensor, "... d_sae"], Float[torch.Tensor, "... d_sae"]]:
 
         # move x to correct dtype
@@ -184,7 +184,8 @@ class TrainingSAE(SAE):
         hidden_pre_noised = hidden_pre + (
             torch.randn_like(hidden_pre) * self.cfg.noise_scale * self.training
         )
-        feature_acts = self.hook_sae_acts_post(self.activation_fn(hidden_pre_noised))
+        # this might be a problem
+        feature_acts = self.hook_sae_acts_post(self.activation_fn(hidden_pre_noised, use_dead=use_dead))
 
         return feature_acts, hidden_pre_noised
 
@@ -194,6 +195,8 @@ class TrainingSAE(SAE):
     ) -> Float[torch.Tensor, "... d_in"]:
 
         feature_acts, _ = self.encode_with_hidden_pre(x)
+        z, _ = self.encode_with_hidden_pre(x, use_dead=True)
+        
         sae_out = self.decode(feature_acts)
 
         return sae_out

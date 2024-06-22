@@ -34,8 +34,23 @@ class TopK(nn.Module):
         self.k = k
         self.postact_fn = postact_fn
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        topk = torch.topk(x, k=self.k, dim=-1)
+    def forward(self, x: torch.Tensor, use_dead: bool = False) -> torch.Tensor:
+        if not use_dead:
+            topk = torch.topk(x, k=self.k, dim=-1)
+        else:
+            # topk over dead latents only.
+            # How am I supposed to know which ones are dead latents?
+            # topk = torch.topk(x, k=self.k, dim=-1)
+            # keep around an extra tensor.
+            # of size x.shape
+            # and keep updating it.
+            # then scatter current step number acorss the indicies
+
+            # if current_step - vector > 10_000_000:
+            #     keep that
+            # then topk across elements we've kept.
+
+            pass
         values = self.postact_fn(topk.values)
         # make all other values 0
         result = torch.zeros_like(x)
