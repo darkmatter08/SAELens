@@ -147,7 +147,7 @@ def configure_and_run(experiment_str: str = "gpt2-small", device: str = "cpu", h
 
         ## WANDB
         log_to_wandb=wandb,  # always use wandb unless you are just testing code.
-        wandb_project="sae_lens_tutorial",
+        wandb_project="sae_lens_sweeps",
         wandb_log_frequency=30,
         eval_every_n_wandb_logs=20,
 
