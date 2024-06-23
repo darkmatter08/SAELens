@@ -288,8 +288,8 @@ class SAETrainer:
         return {
             # losses
             "losses/mse_loss": mse_loss,
-            "losses/l1_loss": l1_loss
-            / self.current_l1_coefficient,  # normalize by l1 coefficient
+            # "losses/l1_loss": l1_loss
+            # / self.current_l1_coefficient,  # normalize by l1 coefficient
             "losses/ghost_grad_loss": ghost_grad_loss,
             "losses/aux_k_loss": aux_k_loss,
             "losses/overall_loss": loss,

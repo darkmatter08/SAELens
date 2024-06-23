@@ -1,6 +1,5 @@
-# pip install --upgrade torch numpy ipython ipdb
 # pip install -r requirements.txt
-# pip install sae-lens transformer-lens circuitsvis
+# pip install --upgrade torch numpy ipython ipdb sae-lens transformer-lens circuitsvis
 
 import argparse
 import os
@@ -16,16 +15,19 @@ else:
     wandb = True
 
 LEO_ACTIVATION_FN = "topk-32"
+LEO_ACTIVATION_FN = "relu"
 
 EXPERIMENTS = {
     "tiny": ("tiny-stories-1L-21M", 1024, LEO_ACTIVATION_FN),
     "gpt2-small": ("gpt2-small", 768, LEO_ACTIVATION_FN),
     "gpt2-xl": ("gpt2-xl", 1600, LEO_ACTIVATION_FN),
 }
+
+# Turning off L1 since we're using the LEO_ACTIVATION_FN
 EXPERIMENTS_HYPERS = {
-    "tiny": {"lr": 5e-5, "l1_coefficient": 5, "train_batch_size_tokens": 4096},
-    "gpt2-small": {"lr": 1.20e-03, "l1_coefficient": 3, "train_batch_size_tokens": 4096},  # taken from `pretrained_saes.yaml`
-    "gpt2-xl": {"lr": 1.20e-03, "l1_coefficient": 3, "train_batch_size_tokens": 32},  # taken from `pretrained_saes.yaml`
+    "tiny": {"lr": 5e-5, "l1_coefficient": 0, "train_batch_size_tokens": 4096},
+    "gpt2-small": {"lr": 1.20e-03, "l1_coefficient": 0, "train_batch_size_tokens": 4096},  # taken from `pretrained_saes.yaml`
+    "gpt2-xl": {"lr": 1.20e-04, "l1_coefficient": 0, "train_batch_size_tokens": 32*4},  # taken from `pretrained_saes.yaml`
 }
 
 def configure_and_run(experiment: str = "gpt2-small", device: str = "cpu"):
@@ -43,6 +45,8 @@ def configure_and_run(experiment: str = "gpt2-small", device: str = "cpu"):
     total_training_tokens = total_training_steps * train_batch_size_tokens
 
     CONTEXT_SIZE = 512
+    if experiment == "gpt2-xl":
+        CONTEXT_SIZE = 256
 
     cfg = LanguageModelSAERunnerConfig(
         ## Model Args

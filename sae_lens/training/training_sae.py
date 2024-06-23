@@ -230,12 +230,15 @@ class TrainingSAE(SAE):
         else:
             ghost_grad_loss = 0.0
 
-        if True: # aux_k loss
+        # if True: # aux_k loss
+        if self.cfg.activation_fn_str.startswith("topk"):
             alpha = self.cfg.aux_k_coefficient
             alpha = 1.0/32.0
             ehat = self.decode(self.activation_fn(hidden_pre, use_dead=True))
             err = sae_in - sae_out - ehat
             aux_loss = alpha * torch.einsum("b i, b i ->", err, err) / err.size(0)
+        else:
+            aux_loss = -1.0
 
         # SPARSITY LOSS
         # either the W_dec norms are 1 and this won't do anything or they are not 1
@@ -247,7 +250,7 @@ class TrainingSAE(SAE):
 
         l1_loss = (current_l1_coefficient * sparsity).mean()
 
-        loss = mse_loss + l1_loss + ghost_grad_loss + aux_loss
+        loss = mse_loss + l1_loss + ghost_grad_loss # + aux_loss
 
         return TrainStepOutput(
             sae_in=sae_in,
