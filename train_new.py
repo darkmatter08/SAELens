@@ -10,7 +10,10 @@ import torch
 from sae_lens import LanguageModelSAERunnerConfig, SAETrainingRunner
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
+if "NO_WANDB" in os.environ:
+    wandb = False
+else:
+    wandb = True
 
 LEO_ACTIVATION_FN = "topk-32"
 
@@ -27,9 +30,6 @@ EXPERIMENTS_HYPERS = {
 
 def configure_and_run(experiment: str = "gpt2-small", device: str = "cpu"):
     total_training_steps = 30_000  # probably we should do more
-    batch_size = 4096
-    batch_size = 32
-    total_training_tokens = total_training_steps * batch_size
 
     lr_warm_up_steps = 0
     lr_decay_steps = total_training_steps // 5  # 20% of training
@@ -43,17 +43,17 @@ def configure_and_run(experiment: str = "gpt2-small", device: str = "cpu"):
     total_training_tokens = total_training_steps * train_batch_size_tokens
 
     CONTEXT_SIZE = 512
-    # CONTEXT_SIZE = 256
 
     cfg = LanguageModelSAERunnerConfig(
         ## Model Args
         model_name=model_to_use,  # our model (more options here: https://neelnanda-io.github.io/TransformerLens/generated/model_properties_table.html)
-        hook_name="blocks.0.hook_mlp_out",  # A valid hook point (see more details here: https://neelnanda-io.github.io/TransformerLens/generated/demos/Main_Demo.html#Hook-Points)
-        hook_layer=0,  # Only one layer in the model.
+        hook_name="blocks.8.hook_mlp_out",  # A valid hook point (see more details here: https://neelnanda-io.github.io/TransformerLens/generated/demos/Main_Demo.html#Hook-Points)
+        hook_layer=8,  # Only one layer in the model.
         d_in=d_in,  # the width of the mlp output.
 
         ## Dataset Args
         dataset_path="apollo-research/Skylion007-openwebtext-tokenizer-gpt2",
+        # dataset_path="apollo-research/roneneldan-TinyStories-tokenizer-gpt2",
         is_dataset_tokenized=True,
         streaming=True,  # we could pre-download the token dataset if it was small.
 
@@ -93,7 +93,7 @@ def configure_and_run(experiment: str = "gpt2-small", device: str = "cpu"):
         dead_feature_threshold=1e-4,  # would effect resampling or ghost grads if we were using it.
 
         ## WANDB
-        log_to_wandb=True,  # always use wandb unless you are just testing code.
+        log_to_wandb=wandb,  # always use wandb unless you are just testing code.
         wandb_project="sae_lens_tutorial",
         wandb_log_frequency=30,
         eval_every_n_wandb_logs=20,
@@ -105,6 +105,7 @@ def configure_and_run(experiment: str = "gpt2-small", device: str = "cpu"):
         checkpoint_path="checkpoints",
         dtype="float32",
         activation_fn=activation_fn,
+        aux_k_coefficient=1.0/32.0,
     )
 
     # print all the important config parameters we overrode

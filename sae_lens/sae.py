@@ -10,7 +10,6 @@ from typing import Any, Callable, Optional, Tuple
 
 import einops
 import torch
-import torch.nn as nn
 from jaxtyping import Float
 from safetensors.torch import save_file
 from torch import nn
@@ -40,9 +39,17 @@ class TopK(nn.Module):
 
     def forward(self, x: torch.Tensor, use_dead: bool = False) -> torch.Tensor:
         if self.last_active is None:
-            self.last_active = torch.full_like(x, -float('inf'))
+            self.last_active = torch.full_like(x[0], -float('inf'))
+
+        # sometimes the batch has higher rank? idk wtf is happening here?
+        x_shape = x.shape
+        x = x.view(-1,x.shape[-1])
         topk = torch.topk(x, k=self.k, dim=-1)
-        self.last_active.scatter_(-1, topk.indices, self.step_counter)
+
+        for i in range(x.shape[0]):
+            self.step_counter += 1
+            masked_steps = torch.full_like(topk.indices[i], 0, dtype=torch.float32) + self.step_counter
+            self.last_active.scatter_(-1, topk.indices[i], masked_steps)
         if use_dead:
             dead_latents_mask = (self.step_counter - self.last_active) > self.threshold
             dead_latents = x * dead_latents_mask
@@ -50,22 +57,17 @@ class TopK(nn.Module):
         values = self.postact_fn(topk.values)
         result = torch.zeros_like(x)
         result.scatter_(-1, topk.indices, values)
-        return result
+        return result.reshape(*x_shape)
 
     def state_dict(self, destination=None, prefix="", keep_vars=False):
         state_dict = super().state_dict(destination, prefix, keep_vars)
-        # state_dict.update({prefix + "k": nn.Parameter(torch.tensor(self.k, dtype=torch.int32)), prefix + "postact_fn": self.postact_fn.__class__.__name__})
-        # state_dict.update({prefix + "k": self.k, prefix + "postact_fn": self.postact_fn.__class__.__name__})
-        # state_dict.update({prefix + "k": torch.tensor(self.k, requires_grad=False), prefix + "postact_fn": self.postact_fn.__class__.__name__})
         state_dict.update({prefix + "k": torch.tensor(self.k, requires_grad=False)})
         return state_dict
 
     @classmethod
     def from_state_dict(cls, state_dict: dict[str, torch.Tensor], strict: bool = True) -> "TopK":
-        # k = int(state_dict["k"].data.item())
         k = state_dict["k"]
-        # postact_fn = ACTIVATIONS_CLASSES[state_dict["postact_fn"]]()
-        return cls(k=k)#, postact_fn=postact_fn)
+        return cls(k=k)
 
 ACTIVATIONS_CLASSES = {
     "ReLU": nn.ReLU,
@@ -479,6 +481,7 @@ class SAE(HookedRootModule):
         self.reshape_fn_out = lambda x, d_head: x
         self.d_head = None
         self.hook_z_reshaping_mode = False
+
 
 def get_activation_fn(activation_fn: str) -> Callable[[torch.Tensor], torch.Tensor]:
     if activation_fn == "relu":

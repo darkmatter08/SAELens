@@ -73,6 +73,7 @@ class LanguageModelSAERunnerConfig:
         adam_beta2 (float): The beta2 parameter for Adam.
         mse_loss_normalization (str): The normalization to use for the MSE loss.
         l1_coefficient (float): The L1 coefficient.
+        aux_k_coefficient (float, optional): AuxK coefficient alpha, (see Gao et al, 2024).
         lp_norm (float): The Lp norm.
         scale_sparsity_penalty_by_decoder_norm (bool): Whether to scale the sparsity penalty by the decoder norm.
         l1_warm_up_steps (int): The number of warm-up steps for the L1 loss.
@@ -177,6 +178,7 @@ class LanguageModelSAERunnerConfig:
     lp_norm: float = 1
     scale_sparsity_penalty_by_decoder_norm: bool = False
     l1_warm_up_steps: int = 0
+    aux_k_coefficient: float = 1.0/32.0
 
     ## Learning Rate Schedule
     lr: float = 3e-4

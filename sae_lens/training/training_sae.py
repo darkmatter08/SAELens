@@ -41,6 +41,7 @@ class TrainingSAEConfig(SAEConfig):
     noise_scale: float
     decoder_orthogonal_init: bool
     mse_loss_normalization: Optional[str]
+    aux_k_coefficient : Optional[float] = 1.0/32.0
     decoder_heuristic_init: bool = False
     init_encoder_as_decoder_transpose: bool = False
     scale_sparsity_penalty_by_decoder_norm: bool = False
@@ -79,6 +80,7 @@ class TrainingSAEConfig(SAEConfig):
             init_encoder_as_decoder_transpose=cfg.init_encoder_as_decoder_transpose,
             scale_sparsity_penalty_by_decoder_norm=cfg.scale_sparsity_penalty_by_decoder_norm,
             normalize_activations=cfg.normalize_activations,
+            aux_k_coefficient=cfg.aux_k_coefficient,
         )
 
     @classmethod
@@ -165,7 +167,7 @@ class TrainingSAE(SAE):
         return feature_acts
 
     def encode_with_hidden_pre(
-        self, x: Float[torch.Tensor, "... d_in"], use_dead: bool = False,
+        self, x: Float[torch.Tensor, "... d_in"]
     ) -> tuple[Float[torch.Tensor, "... d_sae"], Float[torch.Tensor, "... d_sae"]]:
 
         # move x to correct dtype
@@ -186,7 +188,7 @@ class TrainingSAE(SAE):
             torch.randn_like(hidden_pre) * self.cfg.noise_scale * self.training
         )
         # this might be a problem
-        feature_acts = self.hook_sae_acts_post(self.activation_fn(hidden_pre_noised, use_dead=use_dead))
+        feature_acts = self.hook_sae_acts_post(self.activation_fn(hidden_pre_noised))
 
         return feature_acts, hidden_pre_noised
 
@@ -196,8 +198,6 @@ class TrainingSAE(SAE):
     ) -> Float[torch.Tensor, "... d_in"]:
 
         feature_acts, _ = self.encode_with_hidden_pre(x)
-        z, _ = self.encode_with_hidden_pre(x, use_dead=True)
-        
         sae_out = self.decode(feature_acts)
 
         return sae_out
@@ -211,7 +211,7 @@ class TrainingSAE(SAE):
 
         # do a forward pass to get SAE out, but we also need the
         # hidden pre.
-        feature_acts, hidden_pre_noised = self.encode_with_hidden_pre(sae_in)
+        feature_acts, hidden_pre = self.encode_with_hidden_pre(sae_in)
         sae_out = self.decode(feature_acts)
 
         # MSE LOSS
@@ -220,9 +220,6 @@ class TrainingSAE(SAE):
 
         # GHOST GRADS
         if self.cfg.use_ghost_grads and self.training and dead_neuron_mask is not None:
-
-            # first half of second forward pass
-            _, hidden_pre = self.encode_with_hidden_pre(sae_in)
             ghost_grad_loss = self.calculate_ghost_grad_loss(
                 x=sae_in,
                 sae_out=sae_out,
@@ -234,10 +231,10 @@ class TrainingSAE(SAE):
             ghost_grad_loss = 0.0
 
         if True: # aux_k loss
+            alpha = self.cfg.aux_k_coefficient
             alpha = 1.0/32.0
-            ehat = self.decode(self.activation_fn(hidden_pre_noised, use_dead=True))
-            e = sae_in - sae_out
-            err = e - ehat
+            ehat = self.decode(self.activation_fn(hidden_pre, use_dead=True))
+            err = sae_in - sae_out - ehat
             aux_loss = alpha * torch.einsum("b i, b i ->", err, err) / err.size(0)
 
         # SPARSITY LOSS
