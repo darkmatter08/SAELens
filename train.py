@@ -46,15 +46,15 @@ EXPERIMENTS = {
     # Note: we shrunk the LR to improve the learning curve for gpt2-xl; however this may not actually work.
     "gpt2-xl": {
         "model_name": "gpt2-xl", "d_in": 1600, "activation_fn": "topk-32",
-        "lr": 1.20e-04, "l1_coefficient": 0, "train_batch_size_tokens": 32*4, "context_size": 512,
+        "lr": 1.20e-04, "l1_coefficient": 0, "train_batch_size_tokens": 32*4, "context_size": 256,
     },
     "gpt2-xl-debug": {
         "model_name": "gpt2-xl", "d_in": 1600, "activation_fn": "topk-32",
-        "lr": 1.20e-04, "l1_coefficient": 0, "train_batch_size_tokens": 32*4, "context_size": 512,
+        "lr": 1.20e-04, "l1_coefficient": 0, "train_batch_size_tokens": 32*4, "context_size": 256,
     },
     "gpt2-xl-debug-relu": {
         "model_name": "gpt2-xl", "d_in": 1600, "activation_fn": "relu",
-        "lr": 1.20e-04, "l1_coefficient": 1.80, "train_batch_size_tokens": 32*4, "context_size": 512,
+        "lr": 1.20e-04, "l1_coefficient": 1.80, "train_batch_size_tokens": 32*4, "context_size": 256,
     },
 }
 
