@@ -238,7 +238,7 @@ class TrainingSAE(SAE):
             err = sae_in - sae_out - ehat
             aux_loss = alpha * torch.einsum("b i, b i ->", err, err) / err.size(0)
         else:
-            aux_loss = -1.0
+            aux_loss = None
 
         # SPARSITY LOSS
         # either the W_dec norms are 1 and this won't do anything or they are not 1
@@ -250,7 +250,9 @@ class TrainingSAE(SAE):
 
         l1_loss = (current_l1_coefficient * sparsity).mean()
 
-        loss = mse_loss + l1_loss + ghost_grad_loss # + aux_loss
+        loss = mse_loss + l1_loss + ghost_grad_loss
+        if aux_loss is not None:
+            loss += aux_loss
 
         return TrainStepOutput(
             sae_in=sae_in,
@@ -264,7 +266,7 @@ class TrainingSAE(SAE):
                 if isinstance(ghost_grad_loss, torch.Tensor)
                 else ghost_grad_loss
             ),
-            aux_k_loss = aux_loss,
+            aux_k_loss = aux_loss if aux_loss is not None else -1.0,
         )
 
     def calculate_ghost_grad_loss(

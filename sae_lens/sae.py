@@ -38,13 +38,16 @@ class TopK(nn.Module):
         self.last_active = None  # This will be initialized with the shape of x in the first forward call
 
     def forward(self, x: torch.Tensor, use_dead: bool = False) -> torch.Tensor:
+        # print(f"ORIG:  {x.shape=}")
+        # x.shape=(4096, 12288)=(vocab_size or batch?, width_SAE)
         if self.last_active is None:
             self.last_active = torch.full_like(x[0], -float('inf'))
 
         # sometimes the batch has higher rank? idk wtf is happening here?
         x_shape = x.shape
-        x = x.view(-1,x.shape[-1])
+        x = x.view(-1, x.shape[-1])  # keep dim=-1, flatten the leading dims
         topk = torch.topk(x, k=self.k, dim=-1)
+        # print(f"AFTER: {x.shape=} {topk.indices.shape=} {self.last_active.shape=}")
 
         for i in range(x.shape[0]):
             self.step_counter += 1
@@ -74,7 +77,6 @@ ACTIVATIONS_CLASSES = {
     "Identity": nn.Identity,
     "TopK": TopK,
 }
-
 
 
 @dataclass

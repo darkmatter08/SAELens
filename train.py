@@ -14,20 +14,37 @@ if "NO_WANDB" in os.environ:
 else:
     wandb = True
 
-LEO_ACTIVATION_FN = "topk-32"
-LEO_ACTIVATION_FN = "relu"
-
 EXPERIMENTS = {
-    "tiny": ("tiny-stories-1L-21M", 1024, LEO_ACTIVATION_FN),
-    "gpt2-small": ("gpt2-small", 768, LEO_ACTIVATION_FN),
-    "gpt2-xl": ("gpt2-xl", 1600, LEO_ACTIVATION_FN),
-}
-
-# Turning off L1 since we're using the LEO_ACTIVATION_FN
-EXPERIMENTS_HYPERS = {
-    "tiny": {"lr": 5e-5, "l1_coefficient": 0, "train_batch_size_tokens": 4096},
-    "gpt2-small": {"lr": 1.20e-03, "l1_coefficient": 0, "train_batch_size_tokens": 4096},  # taken from `pretrained_saes.yaml`
-    "gpt2-xl": {"lr": 1.20e-04, "l1_coefficient": 0, "train_batch_size_tokens": 32*4},  # taken from `pretrained_saes.yaml`
+    # Disable l1 regularization for models using topk
+    "tiny": {
+        "model_name": "tiny-stories-1L-21M", "d_in": 1024, "activation_fn": "topk-32",
+        "lr": 5e-5, "l1_coefficient": 0, "train_batch_size_tokens": 4096, "context_size": 512,
+    },
+    "gpt2-small": {
+        "model_name": "gpt2-small", "d_in": 768, "activation_fn": "topk-32",
+        "lr": 1.20e-03, "l1_coefficient": 0, "train_batch_size_tokens": 4096, "context_size": 512,
+    },
+    "gpt2-small-debug": {
+        "model_name": "gpt2-small", "d_in": 768, "activation_fn": "topk-32",
+        "lr": 1.20e-03, "l1_coefficient": 0, "train_batch_size_tokens": 512, "context_size": 512,
+    },
+    "gpt2-small-debug-relu": {
+        "model_name": "gpt2-small", "d_in": 768, "activation_fn": "relu",
+        "lr": 1.20e-03, "l1_coefficient": 1.80, "train_batch_size_tokens": 512, "context_size": 512,
+    },
+    # Note: we shrunk the LR to improve the learning curve for gpt2-xl; however this may not actually work.
+    "gpt2-xl": {
+        "model_name": "gpt2-xl", "d_in": 1600, "activation_fn": "topk-32",
+        "lr": 1.20e-04, "l1_coefficient": 0, "train_batch_size_tokens": 32*4, "context_size": 256,
+    },
+    "gpt2-xl-debug": {
+        "model_name": "gpt2-xl", "d_in": 1600, "activation_fn": "topk-32",
+        "lr": 1.20e-04, "l1_coefficient": 0, "train_batch_size_tokens": 32*4, "context_size": 256,
+    },
+    "gpt2-xl-debug-relu": {
+        "model_name": "gpt2-xl", "d_in": 1600, "activation_fn": "relu",
+        "lr": 1.20e-04, "l1_coefficient": 1.80, "train_batch_size_tokens": 32*4, "context_size": 256,
+    },
 }
 
 def configure_and_run(experiment: str = "gpt2-small", device: str = "cpu"):
@@ -37,20 +54,15 @@ def configure_and_run(experiment: str = "gpt2-small", device: str = "cpu"):
     lr_decay_steps = total_training_steps // 5  # 20% of training
     l1_warm_up_steps = total_training_steps // 20  # 5% of training
 
-    model_to_use, d_in, activation_fn = EXPERIMENTS[experiment]
+    experiment = EXPERIMENTS[experiment]
+    model_name, d_in, activation_fn = experiment["model_name"], experiment["d_in"], experiment["activation_fn"]
 
-    lr = EXPERIMENTS_HYPERS[experiment]["lr"]
-    l1_coefficient = EXPERIMENTS_HYPERS[experiment]["l1_coefficient"]
-    train_batch_size_tokens = EXPERIMENTS_HYPERS[experiment]["train_batch_size_tokens"]
+    lr, l1_coefficient, train_batch_size_tokens, context_size = experiment["lr"], experiment["l1_coefficient"], experiment["train_batch_size_tokens"], experiment["context_size"]
     total_training_tokens = total_training_steps * train_batch_size_tokens
-
-    CONTEXT_SIZE = 512
-    if experiment == "gpt2-xl":
-        CONTEXT_SIZE = 256
 
     cfg = LanguageModelSAERunnerConfig(
         ## Model Args
-        model_name=model_to_use,  # our model (more options here: https://neelnanda-io.github.io/TransformerLens/generated/model_properties_table.html)
+        model_name=model_name,  # our model (more options here: https://neelnanda-io.github.io/TransformerLens/generated/model_properties_table.html)
         hook_name="blocks.8.hook_mlp_out",  # A valid hook point (see more details here: https://neelnanda-io.github.io/TransformerLens/generated/demos/Main_Demo.html#Hook-Points)
         hook_layer=8,  # Only one layer in the model.
         d_in=d_in,  # the width of the mlp output.
@@ -83,7 +95,7 @@ def configure_and_run(experiment: str = "gpt2-small", device: str = "cpu"):
         l1_warm_up_steps=l1_warm_up_steps,  # this can help avoid too many dead features initially.
         lp_norm=1.0,  # the L1 penalty (and not a Lp for p < 1)
         train_batch_size_tokens=train_batch_size_tokens,
-        context_size=CONTEXT_SIZE,  # will control the lenght of the prompts we feed to the model. Larger is better but slower. so for the tutorial we'll use a short one.
+        context_size=context_size,  # will control the lenght of the prompts we feed to the model. Larger is better but slower. so for the tutorial we'll use a short one.
 
         ## Activation Store Parameters
         n_batches_in_buffer=64,  # controls how many activations we store / shuffle.
@@ -112,8 +124,7 @@ def configure_and_run(experiment: str = "gpt2-small", device: str = "cpu"):
         aux_k_coefficient=1.0/32.0,
     )
 
-    # print all the important config parameters we overrode
-    print(f"Running {experiment=}\nUsing {cfg.model_name=} {cfg.lr=} {cfg.l1_coefficient=} {cfg.train_batch_size_tokens=} {cfg.training_tokens=} {cfg.activation_fn=} {cfg.device=}")
+    print(f"Running {experiment=}\nUsing {cfg.device=}")
 
     sparse_autoencoder = SAETrainingRunner(cfg).run()
     return sparse_autoencoder
@@ -122,7 +133,7 @@ if __name__ == "__main__":
     # import argparse and setup a parser to grab the experiment name
     # also add an option to override the device
     parser = argparse.ArgumentParser()
-    parser.add_argument("--experiment", type=str, default="gpt2-small")
+    parser.add_argument("--experiment", type=str, default="gpt2-small", choices=EXPERIMENTS.keys())
     parser.add_argument("--device", type=str, default=None)
     args = parser.parse_args()
 
@@ -135,5 +146,4 @@ if __name__ == "__main__":
             device = "cpu"
     else:
         device = args.device
-    print("Using device:", device)
     configure_and_run(experiment=args.experiment, device=device)
