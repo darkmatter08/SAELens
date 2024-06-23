@@ -3,6 +3,7 @@
 
 import argparse
 import os
+import subprocess
 
 import torch
 
@@ -13,6 +14,16 @@ if "NO_WANDB" in os.environ:
     wandb = False
 else:
     wandb = True
+
+def get_git_commit_hash():
+    try:
+        # Run the git command to get the current commit hash
+        commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip().decode('utf-8')
+        return commit_hash
+    except subprocess.CalledProcessError as e:
+        print(f"Error occurred while getting the commit hash: {e}")
+        return None
+
 
 EXPERIMENTS = {
     # Disable l1 regularization for models using topk
@@ -39,13 +50,19 @@ EXPERIMENTS = {
     },
     "gpt2-xl-debug": {
         "model_name": "gpt2-xl", "d_in": 1600, "activation_fn": "topk-32",
-        "lr": 1.20e-04, "l1_coefficient": 0, "train_batch_size_tokens": 32*4, "context_size": 256,
+        "lr": 1.20e-04, "l1_coefficient": 0, "train_batch_size_tokens": 32*4, "context_size": 512,
     },
     "gpt2-xl-debug-relu": {
         "model_name": "gpt2-xl", "d_in": 1600, "activation_fn": "relu",
         "lr": 1.20e-04, "l1_coefficient": 1.80, "train_batch_size_tokens": 32*4, "context_size": 256,
     },
 }
+
+# LR Sweep: +0.5 OoM, -1 OoM, -2 OoM
+BASE_LR = 1.20e-04
+SWEEP_LR = [BASE_LR * 5, BASE_LR / 10, BASE_LR / 100]
+BASE_BATCH_SIZE = 128
+BATCH_SIZE_SWEEP = [BASE_BATCH_SIZE * 2, BASE_BATCH_SIZE * 4]
 
 def configure_and_run(experiment: str = "gpt2-small", device: str = "cpu"):
     total_training_steps = 30_000  # probably we should do more
@@ -137,6 +154,7 @@ if __name__ == "__main__":
     parser.add_argument("--device", type=str, default=None)
     args = parser.parse_args()
 
+    print(f"commit: {get_git_commit_hash()}")
     if not args.device:
         if torch.cuda.is_available():
             device = "cuda"
