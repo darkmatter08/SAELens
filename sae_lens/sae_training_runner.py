@@ -74,6 +74,9 @@ class SAETrainingRunner:
                 name=self.cfg.run_name,
                 id=self.cfg.wandb_id,
             )
+            url = wandb.run.get_url()
+            with open("runs.txt", "a") as f:
+                print(self.cfg.lr, self.cfg.train_batch_size_tokens, url, file=f)
 
         trainer = SAETrainer(
             model=self.model,
