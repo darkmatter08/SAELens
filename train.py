@@ -46,7 +46,7 @@ EXPERIMENTS = {
     # Note: we shrunk the LR to improve the learning curve for gpt2-xl; however this may not actually work.
     "gpt2-xl": {
         "model_name": "gpt2-xl", "d_in": 1600, "activation_fn": "topk-32",
-        "lr": 1.20e-04, "l1_coefficient": 0, "train_batch_size_tokens": 32*4, "context_size": 256,
+        "lr": 1.20e-04, "l1_coefficient": 0, "train_batch_size_tokens": 32*4, "context_size": 512,
     },
     "gpt2-xl-debug": {
         "model_name": "gpt2-xl", "d_in": 1600, "activation_fn": "topk-32",
@@ -54,7 +54,7 @@ EXPERIMENTS = {
     },
     "gpt2-xl-debug-relu": {
         "model_name": "gpt2-xl", "d_in": 1600, "activation_fn": "relu",
-        "lr": 1.20e-04, "l1_coefficient": 1.80, "train_batch_size_tokens": 32*4, "context_size": 256,
+        "lr": 1.20e-04, "l1_coefficient": 1.80, "train_batch_size_tokens": 32*4, "context_size": 512,
     },
 }
 
@@ -64,14 +64,33 @@ SWEEP_LR = [BASE_LR * 5, BASE_LR / 10, BASE_LR / 100]
 BASE_BATCH_SIZE = 128
 BATCH_SIZE_SWEEP = [BASE_BATCH_SIZE * 2, BASE_BATCH_SIZE * 4]
 
-def configure_and_run(experiment: str = "gpt2-small", device: str = "cpu"):
+
+def sweep_lr(args):
+    for lr in SWEEP_LR:
+        overrides = {"lr": lr}
+        configure_and_run(experiment_str=args.experiment, device=args.device, hyper_overrides=overrides)
+
+def sweep_bs(args):
+    for bs in BATCH_SIZE_SWEEP:
+        overrides = {"train_batch_size_tokens": bs}
+        configure_and_run(experiment_str=args.experiment, device=args.device, hyper_overrides=overrides)
+
+
+def configure_and_run(experiment_str: str = "gpt2-small", device: str = "cpu", hyper_overrides: dict = {}):
     total_training_steps = 30_000  # probably we should do more
 
     lr_warm_up_steps = 0
     lr_decay_steps = total_training_steps // 5  # 20% of training
     l1_warm_up_steps = total_training_steps // 20  # 5% of training
 
-    experiment = EXPERIMENTS[experiment]
+    experiment = EXPERIMENTS[experiment_str]
+
+    for hyper, value in hyper_overrides.items():
+        if hyper in experiment:
+            experiment[hyper] = value
+        else:
+            raise ValueError(f"attemtped to override hyper that is not set: {hyper=} {value=}")
+
     model_name, d_in, activation_fn = experiment["model_name"], experiment["d_in"], experiment["activation_fn"]
 
     lr, l1_coefficient, train_batch_size_tokens, context_size = experiment["lr"], experiment["l1_coefficient"], experiment["train_batch_size_tokens"], experiment["context_size"]
@@ -99,7 +118,8 @@ def configure_and_run(experiment: str = "gpt2-small", device: str = "cpu"):
         scale_sparsity_penalty_by_decoder_norm=True,
         decoder_heuristic_init=True,
         init_encoder_as_decoder_transpose=True,
-        normalize_activations="expected_average_only_in",
+        # normalize_activations="expected_average_only_in",
+        normalize_activations="none",
 
         ## Training Parameters (for the SAE, the rest of the model is frozen)
         lr=lr,  # lower the better, we'll go fairly high to speed up the tutorial.
@@ -152,16 +172,22 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--experiment", type=str, default="gpt2-small", choices=EXPERIMENTS.keys())
     parser.add_argument("--device", type=str, default=None)
+    parser.add_argument("--sweep_lr", action="store_true")
+    parser.add_argument("--sweep_bs", action="store_true")
     args = parser.parse_args()
 
     print(f"commit: {get_git_commit_hash()}")
     if not args.device:
         if torch.cuda.is_available():
-            device = "cuda"
+            args.device = "cuda"
         elif torch.backends.mps.is_available():
-            device = "mps"
+            args.device = "mps"
         else:
-            device = "cpu"
-    else:
-        device = args.device
-    configure_and_run(experiment=args.experiment, device=device)
+            args.device = "cpu"
+    if args.sweep_lr:
+        sweep_lr(args)
+    if args.sweep_bs:
+        sweep_bs(args)
+    if not args.sweep_lr and not args.sweep_bs:
+        configure_and_run(experiment_str=args.experiment, device=args.device)
+

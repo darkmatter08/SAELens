@@ -236,8 +236,8 @@ class ActivationsStore:
 
     @torch.no_grad()
     def estimate_norm_scaling_factor(self, n_batches_for_norm_estimate: int = int(1e3)):
-
-        return 1.049702950828780
+        if 0:
+            return 1.049702950828780
         norms_per_batch = []
         for _ in tqdm(
             range(n_batches_for_norm_estimate), desc="Estimating norm scaling factor"
