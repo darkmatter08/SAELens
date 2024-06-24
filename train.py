@@ -65,15 +65,21 @@ BASE_BATCH_SIZE = 128
 BATCH_SIZE_SWEEP = [int(BASE_BATCH_SIZE / 2), BASE_BATCH_SIZE, BASE_BATCH_SIZE * 2, BASE_BATCH_SIZE * 4]
 
 
+# These sweep_* functions cause CUDA OOM after the first training job completes, figure out how to not leak memory
 def sweep_lr(args):
     for lr in SWEEP_LR:
         overrides = {"lr": lr}
-        configure_and_run(experiment_str=args.experiment, device=args.device, hyper_overrides=overrides)
+        result = configure_and_run(experiment_str=args.experiment, device=args.device, hyper_overrides=overrides)
+        # quick hack to try and fix; untested
+        del result
+        torch.cuda.empty_cache()
 
 def sweep_bs(args):
     for bs in BATCH_SIZE_SWEEP:
         overrides = {"train_batch_size_tokens": bs}
-        configure_and_run(experiment_str=args.experiment, device=args.device, hyper_overrides=overrides)
+        result = configure_and_run(experiment_str=args.experiment, device=args.device, hyper_overrides=overrides)
+        del result
+        torch.cuda.empty_cache()
 
 
 def configure_and_run(experiment_str: str = "gpt2-small", device: str = "cpu", hyper_overrides: dict = {}):
@@ -172,8 +178,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--experiment", type=str, default="gpt2-small", choices=EXPERIMENTS.keys())
     parser.add_argument("--device", type=str, default=None)
-    parser.add_argument("--sweep_lr", action="store_true")
-    parser.add_argument("--sweep_bs", action="store_true")
+    # parser.add_argument("--sweep_lr", action="store_true")
+    # parser.add_argument("--sweep_bs", action="store_true")
+    parser.add_argument("--lr", type=str, default=None)
+    parser.add_argument("--bs", type=int, default=None)
     args = parser.parse_args()
 
     print(f"commit: {get_git_commit_hash()}")
@@ -184,10 +192,20 @@ if __name__ == "__main__":
             args.device = "mps"
         else:
             args.device = "cpu"
-    if args.sweep_lr:
-        sweep_lr(args)
-    if args.sweep_bs:
-        sweep_bs(args)
-    if not args.sweep_lr and not args.sweep_bs:
+    # if args.sweep_lr:
+    #     sweep_lr(args)
+    # if args.sweep_bs:
+    #     sweep_bs(args)
+    if args.lr:
+        try:
+            float(args.lr)
+        except ValueError:
+            raise ValueError(f"lr must be a float, got {args.lr}")
+        print(f"overriding lr with {float(args.lr)}")
+        configure_and_run(experiment_str=args.experiment, device=args.device, hyper_overrides={"lr": float(args.lr)})
+    elif args.bs:
+        print(f"overriding bs with {args.bs}")
+        configure_and_run(experiment_str=args.experiment, device=args.device, hyper_overrides={"train_batch_size_tokens": args.bs})
+    else:
         configure_and_run(experiment_str=args.experiment, device=args.device)
 
