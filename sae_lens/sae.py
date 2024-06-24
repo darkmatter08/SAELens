@@ -67,10 +67,18 @@ class TopK(nn.Module):
         state_dict.update({prefix + "k": torch.tensor(self.k, requires_grad=False)})
         return state_dict
 
-    @classmethod
-    def from_state_dict(cls, state_dict: dict[str, torch.Tensor], strict: bool = True) -> "TopK":
-        k = state_dict["k"]
-        return cls(k=k)
+    # Note that the way serialization is setup, we never actually call load_state_dict
+    # or from_state_dict(). Instead, TopK is re-instantated based on the SAEConfig.
+    # def load_state_dict(self, state_dict, strict=True):
+    #     import pdb; pdb.set_trace()
+    #     if "k" in state_dict:
+    #         self.k = state_dict.pop("k").item()
+    #     super().load_state_dict(state_dict, strict)
+
+    # @classmethod
+    # def from_state_dict(cls, state_dict: dict[str, torch.Tensor], strict: bool = True) -> "TopK":
+    #     k = state_dict["k"].item()
+    #     return cls(k=k)
 
 ACTIVATIONS_CLASSES = {
     "ReLU": nn.ReLU,
@@ -395,6 +403,10 @@ class SAE(HookedRootModule):
         sae_cfg = SAEConfig.from_dict(cfg_dict)
 
         sae = cls(sae_cfg)
+        # The activation fn is re-instantated (as opposed to reloaded from state dict)
+        # based on sae_cfg
+        # Now, we can just safely ignore the activation_fn.k in the state_dict (if it exists)
+        state_dict.pop("activation_fn.k", None)
         sae.load_state_dict(state_dict)
 
         return sae
