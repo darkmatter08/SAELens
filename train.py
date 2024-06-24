@@ -25,70 +25,57 @@ def get_git_commit_hash():
         return None
 
 
+# These were selected based on gpt2-xl using sweep_{lr,bs}.sh
+BEST_LR = 1.20e-04  # note that this was the best lr for gpt2-xl; gpt2-small hasn't been swept, but SAELens used `1.2e-03`.
+BEST_BATCH_SIZE = 512  # note that this was the largest bs tested with gpt2-xl: (64 128 256 512); there may be larger ones that work.
+# on gpt2-xl:
+# 1024 works, but is slow (2hr train), and reduces gpu util
+# 2048 works, but is slow (4hr train), and reduces gpu util
+# 4096 results in CUDA OOM
+# Based on this dramatic slowdown, I am going to use 512 for gpt2-xl
+
 EXPERIMENTS = {
     # Disable l1 regularization for models using topk
     "tiny": {
         "model_name": "tiny-stories-1L-21M", "d_in": 1024, "activation_fn": "topk-32",
         "lr": 5e-5, "l1_coefficient": 0, "train_batch_size_tokens": 4096, "context_size": 512,
+        "total_training_steps": 30_000,
     },
+    # Note: 4096 works for gpt2-small, but for consistency, I am using 512 here.
     "gpt2-small": {
         "model_name": "gpt2-small", "d_in": 768, "activation_fn": "topk-32",
-        "lr": 1.20e-03, "l1_coefficient": 0, "train_batch_size_tokens": 4096, "context_size": 512,
+        "lr": 1.20e-03, "l1_coefficient": 0, "train_batch_size_tokens": BEST_BATCH_SIZE, "context_size": 512,
+        "total_training_steps": 30_000,
     },
     "gpt2-small-debug": {
         "model_name": "gpt2-small", "d_in": 768, "activation_fn": "topk-32",
-        "lr": 1.20e-03, "l1_coefficient": 0, "train_batch_size_tokens": 512, "context_size": 512,
+        "lr": 1.20e-03, "l1_coefficient": 0, "train_batch_size_tokens": BEST_BATCH_SIZE, "context_size": 512,
+        "total_training_steps": 30_000,
     },
-    "gpt2-small-debug-relu": {
+    "gpt2-small-relu": {
         "model_name": "gpt2-small", "d_in": 768, "activation_fn": "relu",
-        "lr": 1.20e-03, "l1_coefficient": 1.80, "train_batch_size_tokens": 512, "context_size": 512,
+        "lr": 1.20e-03, "l1_coefficient": 1.80, "train_batch_size_tokens": BEST_BATCH_SIZE, "context_size": 512,
+        "total_training_steps": 30_000,
     },
     # Note: we shrunk the LR to improve the learning curve for gpt2-xl; however this may not actually work.
     "gpt2-xl": {
         "model_name": "gpt2-xl", "d_in": 1600, "activation_fn": "topk-32",
-        "lr": 1.20e-04, "l1_coefficient": 0, "train_batch_size_tokens": 32*4, "context_size": 256,
+        "lr": BEST_LR, "l1_coefficient": 0, "train_batch_size_tokens": BEST_BATCH_SIZE, "context_size": 256,
+        "total_training_steps": 30_000,
     },
     "gpt2-xl-debug": {
         "model_name": "gpt2-xl", "d_in": 1600, "activation_fn": "topk-32",
-        "lr": 1.20e-04, "l1_coefficient": 0, "train_batch_size_tokens": 32*4, "context_size": 256,
+        "lr": BEST_LR, "l1_coefficient": 0, "train_batch_size_tokens": BEST_BATCH_SIZE, "context_size": 256,
+        "total_training_steps": 30_000,
     },
-    "gpt2-xl-debug-relu": {
+    "gpt2-xl-relu": {
         "model_name": "gpt2-xl", "d_in": 1600, "activation_fn": "relu",
-        "lr": 1.20e-04, "l1_coefficient": 1.80, "train_batch_size_tokens": 32*4, "context_size": 256,
+        "lr": BEST_LR, "l1_coefficient": 1.80, "train_batch_size_tokens": BEST_BATCH_SIZE, "context_size": 256,
+        "total_training_steps": 30_000,
     },
 }
 
-# LR Sweep: +0.5 OoM, -1 OoM, -2 OoM
-BASE_LR = 1.20e-04
-SWEEP_LR = [BASE_LR * 5, BASE_LR, BASE_LR / 10, BASE_LR / 100]
-BASE_BATCH_SIZE = 128
-BATCH_SIZE_SWEEP = [int(BASE_BATCH_SIZE / 2), BASE_BATCH_SIZE, BASE_BATCH_SIZE * 2, BASE_BATCH_SIZE * 4]
-
-
-# These sweep_* functions cause CUDA OOM after the first training job completes, figure out how to not leak memory
-def sweep_lr(args):
-    for lr in SWEEP_LR:
-        overrides = {"lr": lr}
-        result = configure_and_run(experiment_str=args.experiment, device=args.device, hyper_overrides=overrides)
-        # quick hack to try and fix; untested
-        del result
-        torch.cuda.empty_cache()
-
-def sweep_bs(args):
-    for bs in BATCH_SIZE_SWEEP:
-        overrides = {"train_batch_size_tokens": bs}
-        result = configure_and_run(experiment_str=args.experiment, device=args.device, hyper_overrides=overrides)
-        del result
-        torch.cuda.empty_cache()
-
-
-def configure_and_run(experiment_str: str = "gpt2-small", device: str = "cpu", hyper_overrides: dict = {}):
-    total_training_steps = 30_000  # probably we should do more
-
-    lr_warm_up_steps = 0
-    lr_decay_steps = total_training_steps // 5  # 20% of training
-    l1_warm_up_steps = total_training_steps // 20  # 5% of training
-
+def configure_and_run(experiment_str: str = "gpt2-small", device: str = "cpu", hyper_overrides: dict[str, int | float] = {}):
     experiment = EXPERIMENTS[experiment_str]
 
     for hyper, value in hyper_overrides.items():
@@ -100,6 +87,13 @@ def configure_and_run(experiment_str: str = "gpt2-small", device: str = "cpu", h
     model_name, d_in, activation_fn = experiment["model_name"], experiment["d_in"], experiment["activation_fn"]
 
     lr, l1_coefficient, train_batch_size_tokens, context_size = experiment["lr"], experiment["l1_coefficient"], experiment["train_batch_size_tokens"], experiment["context_size"]
+
+    total_training_steps: int = experiment["total_training_steps"]  # we should probably do >30k
+
+    lr_warm_up_steps = 0
+    lr_decay_steps = total_training_steps // 5  # 20% of training
+    l1_warm_up_steps = total_training_steps // 20  # 5% of training
+
     total_training_tokens = total_training_steps * train_batch_size_tokens
 
     cfg = LanguageModelSAERunnerConfig(
@@ -173,13 +167,9 @@ def configure_and_run(experiment_str: str = "gpt2-small", device: str = "cpu", h
     return sparse_autoencoder
 
 if __name__ == "__main__":
-    # import argparse and setup a parser to grab the experiment name
-    # also add an option to override the device
     parser = argparse.ArgumentParser()
     parser.add_argument("--experiment", type=str, default="gpt2-small", choices=EXPERIMENTS.keys())
     parser.add_argument("--device", type=str, default=None)
-    # parser.add_argument("--sweep_lr", action="store_true")
-    # parser.add_argument("--sweep_bs", action="store_true")
     parser.add_argument("--lr", type=str, default=None)
     parser.add_argument("--bs", type=int, default=None)
     args = parser.parse_args()
@@ -192,20 +182,17 @@ if __name__ == "__main__":
             args.device = "mps"
         else:
             args.device = "cpu"
-    # if args.sweep_lr:
-    #     sweep_lr(args)
-    # if args.sweep_bs:
-    #     sweep_bs(args)
+    hyper_overrides = {}
     if args.lr:
         try:
             float(args.lr)
         except ValueError:
             raise ValueError(f"lr must be a float, got {args.lr}")
         print(f"overriding lr with {float(args.lr)}")
-        configure_and_run(experiment_str=args.experiment, device=args.device, hyper_overrides={"lr": float(args.lr)})
+        hyper_overrides.update({"lr": float(args.lr)})
     elif args.bs:
         print(f"overriding bs with {args.bs}")
-        configure_and_run(experiment_str=args.experiment, device=args.device, hyper_overrides={"train_batch_size_tokens": args.bs})
+        hyper_overrides.update({"train_batch_size_tokens": args.bs})
     else:
-        configure_and_run(experiment_str=args.experiment, device=args.device)
+        configure_and_run(experiment_str=args.experiment, device=args.device, hyper_overrides=hyper_overrides)
 
